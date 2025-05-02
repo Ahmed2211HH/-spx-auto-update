@@ -20,7 +20,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     keyboard = [
         [InlineKeyboardButton("تحديد العقد", callback_data="set_contract")],
-        [InlineKeyboardButton("إيقاف التحديث", callback_data="stop_monitoring")]
+        [InlineKeyboardButton("إيقاف التحديث", callback_data="stop_monitoring")],
+        [InlineKeyboardButton("إرسال تجربة", callback_data="send_test_image")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("مرحباً! تحكم في العقد من هنا:", reply_markup=reply_markup)
@@ -38,6 +39,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         monitoring = False
         await query.edit_message_text("تم إيقاف التحديث ❌")
         return -1
+    elif query.data == "send_test_image":
+        await capture_image()
+        with open("contract.png", "rb") as photo:
+            await context.bot.send_photo(chat_id=OWNER_ID, photo=photo, caption="هذه تجربة للصورة قبل بدء التحديث.")
+        await query.edit_message_text("✅ تم إرسال الصورة التجريبية.")
+        return -1
 
 async def receive_contract(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global contract_name
@@ -52,7 +59,7 @@ async def receive_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE):
         monitoring = True
         last_price = 0
         await update.message.reply_text("✅ تم بدء المراقبة للعقد...")
-        asyncio.create_task(monitor_contract(update, context))
+        asyncio.create_task(monitor_contract(context))
     except:
         await update.message.reply_text("❌ تأكد من كتابة رقم صحيح.")
     return -1
@@ -67,7 +74,7 @@ async def capture_image():
         await page.screenshot(path="contract.png")
         await browser.close()
 
-async def monitor_contract(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def monitor_contract(context: ContextTypes.DEFAULT_TYPE):
     global last_price
     while monitoring:
         await capture_image()
