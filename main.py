@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from playwright.async_api import async_playwright
@@ -21,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("تحديد العقد", callback_data="set_contract")],
         [InlineKeyboardButton("إيقاف التحديث", callback_data="stop_monitoring")],
-        [InlineKeyboardButton("إرسال تجربة", callback_data="send_test_image")]
+        [InlineKeyboardButton("إرسال تجربة", callback_data="test_capture")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("مرحباً! تحكم في العقد من هنا:", reply_markup=reply_markup)
@@ -39,11 +38,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         monitoring = False
         await query.edit_message_text("تم إيقاف التحديث ❌")
         return -1
-    elif query.data == "send_test_image":
+    elif query.data == "test_capture":
         await capture_image()
         with open("contract.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=OWNER_ID, photo=photo, caption="هذه تجربة للصورة قبل بدء التحديث.")
-        await query.edit_message_text("✅ تم إرسال الصورة التجريبية.")
+            await context.bot.send_photo(chat_id=OWNER_ID, photo=photo)
+        await query.edit_message_text("تم إرسال الصورة التجريبية.")
         return -1
 
 async def receive_contract(update: Update, context: ContextTypes.DEFAULT_TYPE):
