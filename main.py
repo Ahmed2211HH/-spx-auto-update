@@ -5,51 +5,41 @@ import datetime
 from PIL import Image
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-import pandas as pd
 
 # إعدادات البوت
 TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
 OWNER_ID = 7123756100
 
-def get_friday_data():
-    symbol = "^GSPC"
-    data = yf.download(symbol, period="7d", interval="15m")
-    if data.empty:
-        raise ValueError("لا توجد بيانات متاحة.")
-    
-    # استخراج بيانات يوم الجمعة الأخير
-    data['weekday'] = data.index.to_series().dt.weekday
-    friday_data = data[data['weekday'] == 4].drop(columns='weekday')
-    if friday_data.empty:
-        raise ValueError("بيانات يوم الجمعة غير متوفرة.")
-    
-    return friday_data
-
-def get_live_data():
-    symbol = "^GSPC"
-    data = yf.download(symbol, period="1d", interval="5m")
-    if data.empty:
-        raise ValueError("لا توجد بيانات لحظية حالياً.")
-    return data
-
+# دالة التحليل
 def generate_analysis_image():
-    today = datetime.datetime.now().weekday()  # 0=Mon, ..., 6=Sun
-    use_friday = today in [5, 6]  # السبت أو الأحد
+    today = datetime.datetime.now().weekday()
+    symbol = "^GSPC"
 
-    if use_friday:
-        price_data = get_friday_data()
+    # إذا اليوم سبت أو أحد → نحلل آخر بيانات يوم جمعة
+    if today in [5, 6]:
+        data = yf.download(symbol, period="7d", interval="15m")
+        if data.empty:
+            raise ValueError("لا توجد بيانات متاحة.")
+        # فلترة بيانات الجمعة فقط
+        friday_data = data[[d.weekday() == 4 for d in data.index]]
+        if friday_data.empty:
+            raise ValueError("لا توجد بيانات ليوم الجمعة.")
+        price_data = friday_data
         title = "تحليل استباقي - US500"
-        subtitle = "بناءً على إغلاق يوم الجمعة"
+        subtitle = "بناءً على آخر إغلاق يوم الجمعة"
         tf = "15 دقيقة"
         trade_type = "استباقي"
         strategy = "بيانات الجمعة"
     else:
-        price_data = get_live_data()
+        data = yf.download(symbol, period="1d", interval="5m")
+        if data.empty:
+            raise ValueError("لا توجد بيانات لحظية حالياً.")
+        price_data = data
         title = "تحليل لحظي - US500"
         subtitle = f"بتاريخ {datetime.datetime.now().date()}"
         tf = "5 دقائق"
         trade_type = "لحظي"
-        strategy = "تحليل السوق المباشر"
+        strategy = "زخم مباشر"
 
     current_price = round(price_data["Close"].iloc[-1], 2)
     recent_high = round(price_data["High"].max(), 2)
@@ -84,7 +74,6 @@ async def send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
         return
-
     try:
         image = generate_analysis_image()
         bio = io.BytesIO()
@@ -99,7 +88,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
         return
-
     keyboard = [[InlineKeyboardButton("تحليل SPX الآن", callback_data='analyze_spx')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("اختر من القائمة:", reply_markup=reply_markup)
