@@ -10,26 +10,32 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
 OWNER_ID = 7123756100
 
-# دالة تحليل السوق (تلقائي حسب اليوم)
+# دالة توليد صورة التحليل
 def generate_analysis_image():
-    today = datetime.datetime.now().weekday()  # 0=Mon ... 6=Sun
+    today = datetime.datetime.now().weekday()  # 0=Mon, ..., 6=Sun
     symbol = "^GSPC"
 
     if today in [5, 6]:  # السبت أو الأحد
         data = yf.download(symbol, period="5d", interval="15m")
+        if data.empty:
+            raise ValueError("لا توجد بيانات متاحة لتحليل يوم الجمعة.")
         last_day = data.index[-1].date()
         friday_data = data[data.index.date == last_day]
+        if friday_data.empty:
+            raise ValueError("بيانات يوم الجمعة غير متوفرة.")
+        price_data = friday_data
         title = "تحليل استباقي - US500"
         subtitle = "ليوم الإثنين بناءً على إغلاق الجمعة"
-        price_data = friday_data
         trade_type = "استباقية"
         tf = "15 دقيقة"
         strategy = "نهاية الأسبوع"
     else:
         data = yf.download(symbol, period="1d", interval="5m")
+        if data.empty:
+            raise ValueError("لا توجد بيانات لحظية متاحة حالياً.")
+        price_data = data
         title = "تحليل لحظي - US500"
         subtitle = f"بتاريخ {datetime.datetime.now().date()}"
-        price_data = data
         trade_type = "لحظية"
         tf = "5 دقائق"
         strategy = "زخم لحظي"
@@ -40,11 +46,10 @@ def generate_analysis_image():
 
     direction = "صاعد" if current_price > price_data["Close"].iloc[0] else "هابط"
     entry = current_price
-    target1 = round(current_price + 15, 2) if direction == "صاعد" else round(current_price - 15, 2)
-    target2 = round(current_price + 30, 2) if direction == "صاعد" else round(current_price - 30, 2)
+    target1 = round(entry + 15, 2) if direction == "صاعد" else round(entry - 15, 2)
+    target2 = round(entry + 30, 2) if direction == "صاعد" else round(entry - 30, 2)
     stop_loss = round(recent_low - 10, 2) if direction == "صاعد" else round(recent_high + 10, 2)
 
-    # رسم الصورة
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.axis('off')
     ax.text(0.5, 0.95, title, fontsize=16, ha='center', weight='bold')
@@ -63,19 +68,22 @@ def generate_analysis_image():
     buf.seek(0)
     return Image.open(buf)
 
-# إرسال التحليل كصورة
+# إرسال التحليل للمستخدم
 async def send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
         return
 
-    image = generate_analysis_image()
-    bio = io.BytesIO()
-    image.save(bio, format='PNG')
-    bio.seek(0)
-    await context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
+    try:
+        image = generate_analysis_image()
+        bio = io.BytesIO()
+        image.save(bio, format='PNG')
+        bio.seek(0)
+        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
+    except Exception as e:
+        await update.message.reply_text(f"حدث خطأ أثناء تحليل السوق:\n{e}")
 
-# لوحة التحكم
+# بدء البوت وعرض زر التحليل
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
@@ -85,19 +93,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("اختر من القائمة:", reply_markup=reply_markup)
 
-# التعامل مع الأزرار
+# التعامل مع الضغط على الزر
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == 'analyze_spx':
+    try:
         image = generate_analysis_image()
         bio = io.BytesIO()
         image.save(bio, format='PNG')
         bio.seek(0)
         await context.bot.send_photo(chat_id=query.message.chat_id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
+    except Exception as e:
+        await context.bot.send_message(chat_id=query.message.chat_id, text=f"حدث خطأ أثناء التحليل:\n{e}")
 
-# تشغيل التطبيق
+# تشغيل البوت
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
