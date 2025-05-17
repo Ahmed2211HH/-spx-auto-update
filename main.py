@@ -5,6 +5,7 @@ import datetime
 from PIL import Image
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import pandas as pd
 
 # إعدادات البوت
 TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
@@ -15,21 +16,24 @@ def generate_analysis_image():
     today = datetime.datetime.now().weekday()
     symbol = "^GSPC"
 
-    # إذا اليوم سبت أو أحد → نحلل آخر بيانات يوم جمعة
-    if today in [5, 6]:
+    if today in [5, 6]:  # السبت أو الأحد = تحليل الجمعة
         data = yf.download(symbol, period="7d", interval="15m")
         if data.empty:
             raise ValueError("لا توجد بيانات متاحة.")
-        # فلترة بيانات الجمعة فقط
-        friday_data = data[[d.weekday() == 4 for d in data.index]]
+
+        # فلترة بيانات يوم الجمعة باستخدام طريقة مؤكدة
+        index_series = pd.to_datetime(data.index.to_series())
+        friday_data = data[index_series.dt.weekday == 4]
+
         if friday_data.empty:
-            raise ValueError("لا توجد بيانات ليوم الجمعة.")
+            raise ValueError("بيانات يوم الجمعة غير متوفرة.")
+        
         price_data = friday_data
         title = "تحليل استباقي - US500"
-        subtitle = "بناءً على آخر إغلاق يوم الجمعة"
+        subtitle = "بناءً على بيانات يوم الجمعة"
         tf = "15 دقيقة"
         trade_type = "استباقي"
-        strategy = "بيانات الجمعة"
+        strategy = "إغلاق الأسبوع"
     else:
         data = yf.download(symbol, period="1d", interval="5m")
         if data.empty:
@@ -39,7 +43,7 @@ def generate_analysis_image():
         subtitle = f"بتاريخ {datetime.datetime.now().date()}"
         tf = "5 دقائق"
         trade_type = "لحظي"
-        strategy = "زخم مباشر"
+        strategy = "زخم السوق"
 
     current_price = round(price_data["Close"].iloc[-1], 2)
     recent_high = round(price_data["High"].max(), 2)
