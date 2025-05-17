@@ -5,40 +5,51 @@ import datetime
 from PIL import Image
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import pandas as pd
 
 # إعدادات البوت
 TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
 OWNER_ID = 7123756100
 
-# دالة توليد صورة التحليل
+def get_friday_data():
+    symbol = "^GSPC"
+    data = yf.download(symbol, period="7d", interval="15m")
+    if data.empty:
+        raise ValueError("لا توجد بيانات متاحة.")
+    
+    # استخراج بيانات يوم الجمعة الأخير
+    data['weekday'] = data.index.to_series().dt.weekday
+    friday_data = data[data['weekday'] == 4].drop(columns='weekday')
+    if friday_data.empty:
+        raise ValueError("بيانات يوم الجمعة غير متوفرة.")
+    
+    return friday_data
+
+def get_live_data():
+    symbol = "^GSPC"
+    data = yf.download(symbol, period="1d", interval="5m")
+    if data.empty:
+        raise ValueError("لا توجد بيانات لحظية حالياً.")
+    return data
+
 def generate_analysis_image():
     today = datetime.datetime.now().weekday()  # 0=Mon, ..., 6=Sun
-    symbol = "^GSPC"
+    use_friday = today in [5, 6]  # السبت أو الأحد
 
-    if today in [5, 6]:  # السبت أو الأحد
-        data = yf.download(symbol, period="5d", interval="15m")
-        if data.empty:
-            raise ValueError("لا توجد بيانات متاحة لتحليل يوم الجمعة.")
-        last_day = data.index[-1].normalize()
-        friday_data = data[data.index.to_series().dt.normalize() == last_day]
-        if friday_data.empty:
-            raise ValueError("بيانات يوم الجمعة غير متوفرة.")
-        price_data = friday_data
+    if use_friday:
+        price_data = get_friday_data()
         title = "تحليل استباقي - US500"
-        subtitle = "ليوم الإثنين بناءً على إغلاق الجمعة"
-        trade_type = "استباقية"
+        subtitle = "بناءً على إغلاق يوم الجمعة"
         tf = "15 دقيقة"
-        strategy = "نهاية الأسبوع"
+        trade_type = "استباقي"
+        strategy = "بيانات الجمعة"
     else:
-        data = yf.download(symbol, period="1d", interval="5m")
-        if data.empty:
-            raise ValueError("لا توجد بيانات لحظية متاحة حالياً.")
-        price_data = data
+        price_data = get_live_data()
         title = "تحليل لحظي - US500"
         subtitle = f"بتاريخ {datetime.datetime.now().date()}"
-        trade_type = "لحظية"
         tf = "5 دقائق"
-        strategy = "زخم لحظي"
+        trade_type = "لحظي"
+        strategy = "تحليل السوق المباشر"
 
     current_price = round(price_data["Close"].iloc[-1], 2)
     recent_high = round(price_data["High"].max(), 2)
@@ -68,7 +79,7 @@ def generate_analysis_image():
     buf.seek(0)
     return Image.open(buf)
 
-# إرسال التحليل للمستخدم
+# إرسال التحليل
 async def send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
@@ -79,11 +90,11 @@ async def send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bio = io.BytesIO()
         image.save(bio, format='PNG')
         bio.seek(0)
-        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
+        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio, caption="تحليل SPX حسب يوم السوق.")
     except Exception as e:
         await update.message.reply_text(f"حدث خطأ أثناء التحليل:\n{e}")
 
-# بدء البوت وعرض زر التحليل
+# بدء البوت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("هذا البوت خاص.")
@@ -97,13 +108,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     try:
         image = generate_analysis_image()
         bio = io.BytesIO()
         image.save(bio, format='PNG')
         bio.seek(0)
-        await context.bot.send_photo(chat_id=query.message.chat_id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
+        await context.bot.send_photo(chat_id=query.message.chat_id, photo=bio, caption="تحليل SPX حسب يوم السوق.")
     except Exception as e:
         await context.bot.send_message(chat_id=query.message.chat_id, text=f"حدث خطأ أثناء التحليل:\n{e}")
 
