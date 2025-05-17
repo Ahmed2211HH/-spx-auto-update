@@ -12,12 +12,13 @@ def analyze_spx():
     symbol = "^GSPC"
     data = yf.download(symbol, period="1d", interval="5m")
 
-    if data.empty:
-        return "لا توجد بيانات لحظية حالياً."
+    if data.empty or len(data) < 2:
+        return "لا توجد بيانات كافية للتحليل حالياً."
 
     closes = data["Close"]
     last_price = round(closes.iloc[-1], 2)
     start_price = round(closes.iloc[0], 2)
+
     direction = "صاعد" if last_price > start_price else "هابط"
     wave = "موجة دافعة" if abs(last_price - start_price) > 10 else "موجة تصحيحية"
     
@@ -46,7 +47,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     analysis = analyze_spx()
-    await query.message.reply_text(analysis)
+    await context.bot.send_message(chat_id=query.message.chat_id, text=analysis)
 
 # بدء البوت وعرض الزر
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
