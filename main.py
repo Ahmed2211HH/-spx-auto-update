@@ -19,8 +19,8 @@ def generate_analysis_image():
         data = yf.download(symbol, period="5d", interval="15m")
         if data.empty:
             raise ValueError("لا توجد بيانات متاحة لتحليل يوم الجمعة.")
-        last_day = data.index[-1].date()
-        friday_data = data[data.index.date == last_day]
+        last_day = data.index[-1].normalize()
+        friday_data = data[data.index.normalize() == last_day]
         if friday_data.empty:
             raise ValueError("بيانات يوم الجمعة غير متوفرة.")
         price_data = friday_data
@@ -81,7 +81,7 @@ async def send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bio.seek(0)
         await context.bot.send_photo(chat_id=update.effective_chat.id, photo=bio, caption="تحليل SPX الحالي حسب يوم السوق.")
     except Exception as e:
-        await update.message.reply_text(f"حدث خطأ أثناء تحليل السوق:\n{e}")
+        await update.message.reply_text(f"حدث خطأ أثناء التحليل:\n{e}")
 
 # بدء البوت وعرض زر التحليل
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
