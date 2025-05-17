@@ -20,7 +20,7 @@ def generate_analysis_image():
         if data.empty:
             raise ValueError("لا توجد بيانات متاحة لتحليل يوم الجمعة.")
         last_day = data.index[-1].normalize()
-        friday_data = data[data.index.normalize() == last_day]
+        friday_data = data[data.index.to_series().dt.normalize() == last_day]
         if friday_data.empty:
             raise ValueError("بيانات يوم الجمعة غير متوفرة.")
         price_data = friday_data
