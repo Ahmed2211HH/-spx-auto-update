@@ -16,14 +16,13 @@ def generate_analysis_image():
     today = datetime.datetime.now().weekday()
     symbol = "^GSPC"
 
-    if today in [5, 6]:  # السبت أو الأحد = تحليل الجمعة
+    if today in [5, 6]:  # السبت أو الأحد
         data = yf.download(symbol, period="7d", interval="15m")
         if data.empty:
             raise ValueError("لا توجد بيانات متاحة.")
 
-        # فلترة بيانات يوم الجمعة باستخدام طريقة مؤكدة
-        index_series = pd.to_datetime(data.index.to_series())
-        friday_data = data[index_series.dt.weekday == 4]
+        friday_mask = pd.to_datetime(data.index).weekday == 4
+        friday_data = data[friday_mask]
 
         if friday_data.empty:
             raise ValueError("بيانات يوم الجمعة غير متوفرة.")
