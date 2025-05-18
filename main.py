@@ -53,7 +53,7 @@ async def handle_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("تحليل", handle_analysis))
+    app.add_handler(CommandHandler("analyze", handle_analysis)) 
     app.run_polling()
 
 if __name__ == "__main__":
