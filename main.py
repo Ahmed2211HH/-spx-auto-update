@@ -1,69 +1,59 @@
 import yfinance as yf
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-import datetime
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+import logging
 
-# إعدادات البوت
-TOKEN = "7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg"
-OWNER_ID = 7123756100
+# توكن البوت مباشرة
+TOKEN = "7966051975:AAH1QsBd0PNrmN80kVwHlLTyeFPRFUbZOUk"
 
-# تحليل SPX اللحظي
-def analyze_spx():
-    symbol = "^GSPC"
-    data = yf.download(symbol, period="1d", interval="5m")
+logging.basicConfig(level=logging.INFO)
 
-    if data.empty or len(data) < 2:
-        return "لا توجد بيانات كافية للتحليل حالياً."
-
-    closes = data["Close"]
-    last_price = round(closes.iloc[-1], 2)
-    start_price = round(closes.iloc[0], 2)
-
-    direction = "صاعد" if last_price > start_price else "هابط"
-    wave = "موجة دافعة" if abs(last_price - start_price) > 10 else "موجة تصحيحية"
+def generate_analysis(symbol, timeframe):
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period="5d" if timeframe == "لحظي" else "1mo", interval="5m" if timeframe == "لحظي" else "1d")
     
-    entry = last_price
-    target1 = round(entry + 10, 2) if direction == "صاعد" else round(entry - 10, 2)
-    target2 = round(entry + 20, 2) if direction == "صاعد" else round(entry - 20, 2)
-    stop_loss = round(entry - 8, 2) if direction == "صاعد" else round(entry + 8, 2)
+    if hist.empty:
+        return f"لم أتمكن من الحصول على بيانات للسهم {symbol.upper()}"
 
-    analysis = f"""
-تحليل SPX اللحظي – US500
-⏱️ الفريم: 5 دقائق
-الاتجاه: {direction}
-الموجة: {wave}
+    close_prices = hist["Close"]
+    current_price = close_prices.iloc[-1]
+    recent_prices = close_prices[-10:]
 
-نقطة الدخول: {entry}
+    direction = "صاعد" if current_price > recent_prices.mean() else "هابط"
+    wave = "موجة دافعة" if abs(current_price - recent_prices[-2]) > 0.01 * current_price else "موجة تصحيحية"
+    entry = round(current_price, 2)
+    stop_loss = round(entry * 0.97, 2)
+    target1 = round(entry * 1.03, 2)
+    target2 = round(entry * 1.06, 2)
+
+    return f"""تحليل {symbol.upper()} – {ticker.info.get('shortName', 'السهم')}
+⏱️ الفريم: {'4 ساعات' if timeframe == 'لحظي' else 'يومي – أسبوعي'}
+📊 الاتجاه العام: {direction}
+📈 نوع الموجة: {wave}
+
+نقطة الدخول المقترحة: {entry}
 🎯 الهدف 1: {target1}
 🎯 الهدف 2: {target2}
 ❌ وقف الخسارة: {stop_loss}
+"""
 
-استناداً إلى حركة US500 اللحظية.
-    """
-    return analysis.strip()
+async def handle_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if len(context.args) == 0:
+            await update.message.reply_text("اكتب الأمر بالشكل التالي:\n/تحليل AAPL أسبوعي أو لحظي")
+            return
+        
+        symbol = context.args[0]
+        timeframe = context.args[1] if len(context.args) > 1 else "أسبوعي"
+        analysis = generate_analysis(symbol, timeframe)
+        await update.message.reply_text(analysis)
+    except Exception as e:
+        logging.error(e)
+        await update.message.reply_text("حدث خطأ أثناء التحليل.")
 
-# إرسال التحليل عند الضغط على الزر
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    analysis = analyze_spx()
-    await context.bot.send_message(chat_id=query.message.chat_id, text=analysis)
-
-# بدء البوت وعرض الزر
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("هذا البوت خاص.")
-        return
-
-    keyboard = [[InlineKeyboardButton("تحليل SPX الآن", callback_data="analyze_spx")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("اختر من القائمة:", reply_markup=reply_markup)
-
-# تشغيل البوت
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(CommandHandler("تحليل", handle_analysis))
     app.run_polling()
 
 if __name__ == "__main__":
