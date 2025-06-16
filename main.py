@@ -1,84 +1,89 @@
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InputMediaPhoto
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from datetime import datetime
+from PIL import Image
+import pytesseract
+import io
 
-# إعدادات البوت
 TOKEN = "7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg"
-CHANNEL_ID = -1002624628833
+GROUP_ID = -1002624628833
 
-# إعداد السجل
 logging.basicConfig(level=logging.INFO)
 
-# دالة توليد الخطة اليومية
-def generate_daily_plan():
-    current_price = 6016  # عدل هذا الرقم حسب سعر السوق
-    call_entry = current_price + 10
-    put_entry = current_price - 10
+def generate_plan(spx_price: float) -> str:
+    spx_price = round(spx_price)
+    call_entry = spx_price + 10
+    call_targets = [call_entry + 10, call_entry + 25, call_entry + 50]
+    put_entry = spx_price - 10
+    put_targets = [put_entry - 15, put_entry - 30, put_entry - 55]
+    today = datetime.now().strftime("📅 الخطة اليومية – %A | %d %B %Y")
 
-    return f"""📅 الخطة اليومية – تداول SPX
-اليوم | الثلاثاء – 17 يونيو 2025
-
+    return f"""
+{today}
 ⸻
 
 ✅ نقطة دخول Call (شراء صعودي) 📈
-{call_entry:.1f} 🟢
-
-• الشرط: ثبات السعر أعلى هذا المستوى على فاصل الساعة
-• الأهداف المحتملة 🎯:
- • {call_entry + 10:.1f}
- • {call_entry + 25:.1f}
- • {call_entry + 50:.1f}
-
-📌 الوضع الحالي:
-السوق يتداول حاليًا عند {current_price}
-نراقب اختراق {call_entry:.1f} والثبات فوقه لتفعيل الدخول الصعودي.
-
-⸻
+{call_entry} 🟢
+• الأهداف: {call_targets[0]}, {call_targets[1]}, {call_targets[2]}
 
 🔻 نقطة دخول Put (شراء هبوطي) 📉
-{put_entry:.1f} 🔴
+{put_entry} 🔴
+• الأهداف: {put_targets[0]}, {put_targets[1]}, {put_targets[2]}
 
-• الشرط: كسر هذا المستوى والثبات أسفله على فاصل الساعة
-• الأهداف المحتملة 🎯:
- • {put_entry - 15:.1f}
- • {put_entry - 30:.1f}
- • {put_entry - 55:.1f}
-
-📌 الوضع الحالي:
-لم يتم التفعيل بعد، ونترقب كسر واضح أسفل {put_entry:.1f} لتأكيد الهبوط.
-
+📌 السعر الحالي: {spx_price}
 ⸻
-📿 اذكر الله دائماً.
-
-⸻
-
-⚠️ ملاحظات هامة:
-• الالتزام بإدارة رأس المال وعدم الدخول بكامل السيولة
-• لا يتم تفعيل أي صفقة إلا بعد تحقق الشروط الفنية بوضوح
-• الأهداف إرشادية ولا تعني الوصول الإجباري، تابع السوق بتأنٍ وتعامل بمرونة
+⚠️ ملاحظات:
+• لا تدخل قبل تحقق الشروط
+• إدارة رأس المال مهمة
+• تابع السوق ولا تعتمد فقط على الخطة
 """
 
-# دالة تنفيذ الخطة عند كتابة /plan
-async def daily_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = generate_daily_plan()
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+def analyze_contract_text(text: str) -> str:
+    try:
+        lines = text.splitlines()
+        price_line = next((l for l in lines if "$" in l), None)
+        if not price_line:
+            return "لم أستطع قراءة بيانات العقد من الصورة."
 
-# دالة تحليل العقد من الصورة
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📷 تم استلام صورة العقد! جاري تحليلها...")
-    # هنا تقدر تضيف الذكاء الاصطناعي لتحليل العقد إذا أردت
+        name = price_line.split()[0]
+        price = float(price_line.split()[1])
+        target_1 = round(price * 1.3, 2)
+        target_2 = round(price * 1.6, 2)
+        stop_loss = round(price * 0.6, 2)
 
-# بدء التشغيل
+        return f"""🎯 تحليل العقد: {name}
+💵 سعر الدخول: {price}
+🎯 الأهداف:
+• الأول: {target_1}
+• الثاني: {target_2}
+❌ وقف الخسارة: {stop_loss}"""
+    except:
+        return "حدث خطأ أثناء تحليل العقد. تأكد من وضوح الصورة."
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مرحبًا بك في بوت الخطة اليومية! أرسل /plan للحصول على خطة اليوم.")
+    await update.message.reply_text("أرسل 'الخطة اليومية' أو صورة لعقد لتحليلها.")
 
-# تشغيل التطبيق
-if __name__ == '__main__':
+async def plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # سعر وهمي لمحاكاة SPX الحالي (غير متصل ببيانات حقيقية الآن)
+    spx_price = 6016
+    message = generate_plan(spx_price)
+    await update.message.reply_text(message)
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1]
+    file = await photo.get_file()
+    byte_stream = io.BytesIO()
+    await file.download(out=byte_stream)
+    byte_stream.seek(0)
+    img = Image.open(byte_stream)
+    text = pytesseract.image_to_string(img)
+    result = analyze_contract_text(text)
+    await update.message.reply_text(result)
+
+if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("plan", daily_plan))
+    app.add_handler(CommandHandler("الخطة", plan))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-
-    print("Bot is running...")
     app.run_polling()
