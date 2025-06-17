@@ -1,63 +1,57 @@
-import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import os
-from datetime import datetime
+import logging
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from PIL import Image
+import pytesseract
+import io
+import re
 
-BOT_TOKEN = "7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg"
-CHAT_ID = "-1002624628833"
+TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
 
-def fetch_spx_price():
-    url = "https://symbol-search.tradingview.com/symbol_search/"
-    params = {"text": "US500", "exchange": "AMEX", "limit": "1"}
-    resp = requests.get(url, params=params).json()
-    if not resp: return None
-    symbol = resp[0]["symbol"]  # ex: "SPX:US500"
-    quote_url = f"https://scanner.tradingview.com/america/scan"
-    query = {
-        "symbols": {"tickers": [symbol], "query": {"types": []}},
-        "columns": ["close"]
-    }
-    res = requests.post(quote_url, json=query).json()
-    return res["data"][0]["d"][0]
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-def build_plan(price):
-    entry_call = round(price + 10, 1)
-    entry_put = round(price - 10, 1)
-    targets_call = [entry_call + 15, entry_call + 30, entry_call + 60]
-    targets_put = [entry_put - 15, entry_put - 30, entry_put - 60]
-    stop_call = round(entry_call - 5, 1)
-    stop_put = round(entry_put + 5, 1)
-    return entry_call, targets_call, stop_call, entry_put, targets_put, stop_put
+def extract_price_from_text(text):
+    match = re.search(r'(\d+\.\d{2})', text)
+    return float(match.group(1)) if match else None
 
-async def plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    price = fetch_spx_price()
+def analyze_contract_price(price):
     if price is None:
-        await ctx.bot.send_message(chat_id=CHAT_ID,
-            text="❌ خطأ في جلب سعر SPX الآن، حاول لاحقًا.")
-        return
-    ec, tc, sc, ep, tp, sp = build_plan(price)
-    text = f"""
-📅 *خطة اليوم – تداول SPX*
-التاريخ: {datetime.now().strftime('%Y-%m-%d')}
+        return "لم يتم التعرف على السعر من الصورة."
+    entry = price
+    target1 = round(price * 1.25, 2)
+    target2 = round(price * 1.5, 2)
+    target3 = round(price * 1.9, 2)
+    stop = round(price * 0.7, 2)
+    return f'''
+📊 تحليل العقد:
 
-📈 *Call Entry*: {ec}
-• أهداف: {tc[0]}, {tc[1]}, {tc[2]}
-• وقف خسارة: {sc}
+🎯 سعر الدخول: {entry}
+✅ الهدف ١: {target1}
+✅ الهدف ٢: {target2}
+✅ الهدف ٣ (ممتد): {target3}
+❌ وقف الخسارة: كسر {stop} والثبات تحته
 
-📉 *Put Entry*: {ep}
-• أهداف: {tp[0]}, {tp[1]}, {tp[2]}
-• وقف خسارة: {sp}
+📌 ملاحظة: تأكد من حركة السعر الحالية قبل اتخاذ القرار.
+'''
 
-📌 السوق حالياً عند: {price:.2f}  
-📿 اذكر الله دائمًا ✨
-⚠️ لا تدخل إلا إذا نزل السعر لفاصل ساعة وثبت أعلى/أسفل النقاط.
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("أرسل صورة العقد (من WeBull) وسأقوم بتحليل السعر وتحديد الأهداف والوقف 🎯")
 
-✅ إدارة رأس المال ضرورية، والأرقام إرشادية فقط.
-"""
-    await ctx.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo = update.message.photo[-1]
+    file = await photo.get_file()
+    photo_bytes = await file.download_as_bytearray()
+
+    image = Image.open(io.BytesIO(photo_bytes))
+    text = pytesseract.image_to_string(image)
+    price = extract_price_from_text(text)
+    result = analyze_contract_price(price)
+
+    await update.message.reply_text(result)
+
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("plan", plan))
     app.run_polling()
