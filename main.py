@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 # ✅ مفاتيح الوصول
 TELEGRAM_TOKEN = "7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg"
-OPENAI_API_KEY = "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"
+OPENAI_API_KEY = ""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
 
 openai.api_key = OPENAI_API_KEY
 
