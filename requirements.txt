@@ -1,5 +1,2 @@
-python-telegram-bot==20.6
-pillow
-pytesseract
-requests
-openai
+python-telegram-bot==20.7
+openai==1.14.3
