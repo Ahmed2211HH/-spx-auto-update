@@ -1,59 +1,48 @@
 import logging
-import openai
-import telegram
-from telegram.ext import Application, MessageHandler, filters, CommandHandler
 import asyncio
+import nest_asyncio
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+import openai
 
-# إعدادات البوت
-BOT_TOKEN = '7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg'
-OPENAI_API_KEY = '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'
+# إعداد المفاتيح
+TELEGRAM_TOKEN = "7885914349:AAHFM6qMX_CYOOajGwhczwXl3mnLjqRJIAg"
+OPENAI_API_KEY = "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"
 
 openai.api_key = OPENAI_API_KEY
+
 logging.basicConfig(level=logging.INFO)
 
-# دالة التحليل
-async def analyze_symbol(symbol):
-    prompt = f"""
-    حلل لي السهم {symbol} بشكل احترافي وباللغة العربية. 
-    أعطني:
-    1. الاتجاه الحالي.
-    2. الدعم والمقاومة.
-    3. التوصية (شراء أو انتظار أو بيع).
-    4. الأهداف المتوقعة.
-    5. وقف الخسارة.
-    لا تكتب اسم ChatGPT.
-    """
+# تحليل السهم باستخدام GPT
+async def analyze_stock(symbol: str) -> str:
+    prompt = f"حلل لي سهم {symbol} من السوق الأمريكي بشكل فني مختصر ومباشر يشمل: الاتجاه، الدعم والمقاومة، التوصية، الأهداف المقترحة، ووقف الخسارة، ولا تكرر نفس الرد لكل سهم."
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
+    )
+
+    return response.choices[0].message.content
+
+# عند استلام رسالة
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    symbol = update.message.text.strip().upper()
+    await update.message.reply_text("🔎 جاري تحليل السهم ...")
 
     try:
-        response = openai.ChatCompletion.create(
-            model='gpt-4',
-            messages=[{'role': 'user', 'content': prompt}],
-            temperature=0.5
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"❌ حدث خطأ أثناء التحليل: {e}"
-
-# الرد على أي رسالة تحتوي رمز سهم
-async def handle_message(update, context):
-    text = update.message.text.strip().upper()
-    if len(text) <= 6 and text.isalnum():
-        await update.message.reply_text("⏳ جاري تحليل السهم، لحظة فقط...")
-        result = await analyze_symbol(text)
+        result = await analyze_stock(symbol)
         await update.message.reply_text(result)
-    else:
-        await update.message.reply_text("📌 أرسل رمز السهم فقط مثل: TSLA أو AAPL")
+    except Exception as e:
+        await update.message.reply_text("❌ حدث خطأ أثناء التحليل. حاول مرة أخرى لاحقًا.")
 
-# أمر البدء
-async def start(update, context):
-    await update.message.reply_text("👋 مرحبًا بك، أرسل رمز السهم مثل: TSLA وسأقوم بتحليله لك.")
-
-# تشغيل البوت
+# بدء البوت
 async def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     await app.run_polling()
 
+# تشغيل البوت داخل event loop
 if __name__ == "__main__":
-    asyncio.run(main())
+    nest_asyncio.apply()
+    asyncio.get_event_loop().run_until_complete(main())
